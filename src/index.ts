@@ -14,10 +14,6 @@ const app  = express()
 
 app.set('trust proxy', 1)
 
-// ── Security ─────────────────────────────────────────────
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-}))
 const PORT = process.env.PORT || 3001
 
 // ── Security ─────────────────────────────────────────────
