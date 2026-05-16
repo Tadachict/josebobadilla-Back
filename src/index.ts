@@ -57,7 +57,8 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 app.listen(PORT, () => {
   console.log(`✅ Backend en http://localhost:${PORT}`)
-})
-console.log("DB_HOST =", process.env.DB_HOST)
+  console.log("DB_HOST =", process.env.DB_HOST)
 console.log("DB_PORT =", process.env.DB_PORT)
+})
+
 export default app
