@@ -5,60 +5,80 @@ import rateLimit from 'express-rate-limit'
 import path from 'path'
 import dotenv from 'dotenv'
 import publicRoutes from './routes/public'
-import adminRoutes  from './routes/admin'
+import adminRoutes from './routes/admin'
 import uploadRoutes from './routes/upload'
+
+import pool from './db/pool' // 👈 IMPORTANTE para test DB
 
 dotenv.config()
 
-const app  = express()
+const app = express()
 
 app.set('trust proxy', 1)
 
 const PORT = process.env.PORT || 3001
 
-// ── Security ─────────────────────────────────────────────
+// ── SECURITY ─────────────────────────────────────────────
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow images/PDFs from frontend
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }))
+
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
 }))
+
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// ── Serve uploaded files statically ──────────────────────
-// Accessible at: /uploads/images/<filename>  and  /uploads/pdfs/<filename>
+// ── STATIC FILES ─────────────────────────────────────────
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 
-// ── Rate limiting ─────────────────────────────────────────
+// ── RATE LIMIT ───────────────────────────────────────────
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }))
+
 app.use('/api/admin/login', rateLimit({
-  windowMs: 15 * 60 * 1000, max: 10,
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   message: { error: 'Demasiados intentos. Espera 15 minutos.' }
 }))
 
-// ── Routes ────────────────────────────────────────────────
-app.use('/api',          publicRoutes)
-app.use('/api/admin',    adminRoutes)
-app.use('/api/upload',   uploadRoutes)
+// ── ROUTES ───────────────────────────────────────────────
+app.use('/api', publicRoutes)
+app.use('/api/admin', adminRoutes)
+app.use('/api/upload', uploadRoutes)
 
-// ── Health ────────────────────────────────────────────────
-app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
+// ── HEALTH ───────────────────────────────────────────────
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok' })
+})
+
+// ── DB TEST (🔥 CLAVE) ───────────────────────────────────
+pool.getConnection()
+  .then(conn => {
+    console.log("🟢 MYSQL CONECTADO OK")
+    conn.release()
+  })
+  .catch(err => {
+    console.error("🔴 ERROR MYSQL CONEXIÓN:", err.message)
+  })
 
 // ── 404 ───────────────────────────────────────────────────
-app.use((_req, res) => res.status(404).json({ error: 'Ruta no encontrada' }))
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Ruta no encontrada' })
+})
 
-// ── Error handler ─────────────────────────────────────────
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err)
+// ── ERROR HANDLER ────────────────────────────────────────
+app.use((err: any, _req: any, res: any, _next: any) => {
+  console.error("🔥 ERROR GLOBAL:", err)
   res.status(500).json({ error: 'Error interno del servidor' })
 })
 
+// ── START SERVER ─────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`✅ Backend en http://localhost:${PORT}`)
+  console.log(`✅ Backend en puerto ${PORT}`)
   console.log("DB_HOST =", process.env.DB_HOST)
-console.log("DB_PORT =", process.env.DB_PORT)
+  console.log("DB_PORT =", process.env.DB_PORT)
 })
 
 export default app
