@@ -3,6 +3,7 @@ import pool from '../db/pool'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { authMiddleware, AuthRequest } from '../middleware/auth'
+import { upload } from '../upload'
 
 const router = Router()
 
@@ -38,6 +39,15 @@ router.get('/stats', authMiddleware, async (_req, res: Response): Promise<void> 
     const [[icono]]    = await pool.query('SELECT COUNT(*) as c FROM iconografia') as any
     res.json({ pages: pages.c, works: works.c, comments: comments.c, guestbook: guest.c, iconografia: icono.c })
   } catch (err) { console.error(err); res.status(500).json({ error: 'Error' }) }
+})
+
+// ─────────────────────────────────────────────────────────
+// UPLOAD IMAGE → Cloudinary
+// ─────────────────────────────────────────────────────────
+router.post('/upload', authMiddleware, upload.single('file'), (req, res: Response): void => {
+  if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
+  const url = (req.file as any).path
+  res.json({ url })
 })
 
 // ─────────────────────────────────────────────────────────
