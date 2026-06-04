@@ -10,12 +10,15 @@ import uploadRoutes from './routes/upload_route'
 
 dotenv.config()
 
-const app  = express()
+const app = express()
 const PORT = process.env.PORT || 3001
+
+// IMPORTANTE para Render, Railway, Nginx, Cloudflare, etc.
+app.set('trust proxy', 1)
 
 // ── Security ─────────────────────────────────────────────
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow images/PDFs from frontend
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }))
 app.use(cors({
   origin: [
