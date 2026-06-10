@@ -1,61 +1,46 @@
 import express, { Request, Response } from 'express'
 import multer from 'multer'
-import path from 'path'
-import fs from 'fs'
+import { v2 as cloudinary } from 'cloudinary'
+import { CloudinaryStorage } from 'multer-storage-cloudinary'
 import { authMiddleware } from '../middleware/auth'
 
 const router = express.Router()
 
-// ── Ensure upload dirs exist ─────────────────────────────
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
-const IMG_DIR    = path.join(UPLOAD_DIR, 'images')
-const PDF_DIR    = path.join(UPLOAD_DIR, 'pdfs')
-;[UPLOAD_DIR, IMG_DIR, PDF_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }) })
-
-// ── Storage: images ──────────────────────────────────────
-const imageStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, IMG_DIR),
-  filename: (_req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase()
-    const name = `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`
-    cb(null, name)
-  },
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
+  api_key:    process.env.CLOUDINARY_API_KEY!,
+  api_secret: process.env.CLOUDINARY_API_SECRET!,
 })
-const imageUpload = multer({
-  storage: imageStorage,
-  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
-    const ext = path.extname(file.originalname).toLowerCase()
-    if (allowed.includes(ext)) cb(null, true)
-    else cb(new Error('Solo se permiten imágenes (jpg, png, gif, webp)'))
-  },
+
+// ── Storage: imágenes ────────────────────────────────────
+const imageStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'jose-bobadilla/images',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+  } as any,
 })
 
 // ── Storage: PDFs ────────────────────────────────────────
-const pdfStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, PDF_DIR),
-  filename: (_req, file, cb) => {
-    const name = `${Date.now()}-${Math.round(Math.random() * 1e6)}.pdf`
-    cb(null, name)
-  },
+const pdfStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'jose-bobadilla/pdfs',
+    resource_type: 'raw',
+    allowed_formats: ['pdf'],
+  } as any,
 })
-const pdfUpload = multer({
-  storage: pdfStorage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype === 'application/pdf' || path.extname(file.originalname).toLowerCase() === '.pdf')
-      cb(null, true)
-    else cb(new Error('Solo se permiten archivos PDF'))
-  },
-})
+
+const imageUpload = multer({ storage: imageStorage, limits: { fileSize: 8 * 1024 * 1024 } })
+const pdfUpload   = multer({ storage: pdfStorage,   limits: { fileSize: 50 * 1024 * 1024 } })
 
 // ── POST /api/upload/image ───────────────────────────────
 router.post('/image', authMiddleware, (req: Request, res: Response): void => {
   imageUpload.single('file')(req, res, (err) => {
     if (err) { res.status(400).json({ error: err.message }); return }
     if (!req.file) { res.status(400).json({ error: 'No se recibió ningún archivo' }); return }
-    const url = `/uploads/images/${req.file.filename}`
+    const url = (req.file as any).path  // URL completa de Cloudinary
     res.json({ url, filename: req.file.filename, size: req.file.size })
   })
 })
@@ -65,23 +50,29 @@ router.post('/pdf', authMiddleware, (req: Request, res: Response): void => {
   pdfUpload.single('file')(req, res, (err) => {
     if (err) { res.status(400).json({ error: err.message }); return }
     if (!req.file) { res.status(400).json({ error: 'No se recibió ningún archivo' }); return }
-    const url = `/uploads/pdfs/${req.file.filename}`
+    const url = (req.file as any).path
     res.json({ url, filename: req.file.filename, size: req.file.size })
   })
 })
 
-// ── DELETE /api/upload/image/:filename ───────────────────
-router.delete('/image/:filename', authMiddleware, (req: Request, res: Response): void => {
-  const filePath = path.join(IMG_DIR, req.params.filename)
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-  res.json({ ok: true })
+// ── DELETE /api/upload/image/:publicId ───────────────────
+router.delete('/image/:publicId', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    await cloudinary.uploader.destroy(`jose-bobadilla/images/${req.params.publicId}`)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo eliminar' })
+  }
 })
 
-// ── DELETE /api/upload/pdf/:filename ─────────────────────
-router.delete('/pdf/:filename', authMiddleware, (req: Request, res: Response): void => {
-  const filePath = path.join(PDF_DIR, req.params.filename)
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-  res.json({ ok: true })
+// ── DELETE /api/upload/pdf/:publicId ─────────────────────
+router.delete('/pdf/:publicId', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    await cloudinary.uploader.destroy(`jose-bobadilla/pdfs/${req.params.publicId}`, { resource_type: 'raw' })
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo eliminar' })
+  }
 })
 
 export default router
